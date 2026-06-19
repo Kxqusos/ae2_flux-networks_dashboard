@@ -1,6 +1,7 @@
 import threading
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from app.auth import SessionStore
 from app.config import get_settings
@@ -23,3 +24,6 @@ app.include_router(ui.router)
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
+
+
+app.mount("/", StaticFiles(directory="app/static", html=True), name="static")
