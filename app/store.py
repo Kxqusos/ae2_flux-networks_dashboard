@@ -57,3 +57,40 @@ def get_inventory(conn: sqlite3.Connection) -> dict | None:
         "items": json.loads(row["items_json"]),
         "craftables": json.loads(row["craftables_json"]),
     }
+
+
+def create_order(conn: sqlite3.Connection, payload: CreateOrderPayload, now_ts: int) -> int:
+    cursor = conn.execute(
+        "INSERT INTO orders (kind, item, label, amount, status, message, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, 'queued', NULL, ?, ?)",
+        (payload.kind, payload.item, payload.label, payload.amount, now_ts, now_ts),
+    )
+    conn.commit()
+    return cursor.lastrowid
+
+
+def get_pending_orders(conn: sqlite3.Connection) -> list[dict]:
+    rows = conn.execute(
+        "SELECT id, kind, item, label, amount FROM orders WHERE status = 'queued' "
+        "ORDER BY created_at ASC"
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_all_orders(conn: sqlite3.Connection) -> list[dict]:
+    rows = conn.execute(
+        "SELECT id, kind, item, label, amount, status, message, created_at, updated_at "
+        "FROM orders ORDER BY created_at DESC"
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def update_order_status(
+    conn: sqlite3.Connection, order_id: int, payload: OrderResultPayload, now_ts: int
+) -> bool:
+    cursor = conn.execute(
+        "UPDATE orders SET status = ?, message = ?, updated_at = ? WHERE id = ?",
+        (payload.status, payload.message, now_ts, order_id),
+    )
+    conn.commit()
+    return cursor.rowcount > 0
