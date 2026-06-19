@@ -70,28 +70,32 @@ ae2_flux-networks_dashboard/   ← контейнер (не git)
 Ответ: `{"ok": true}`. Сервер обновляет `last_seen` и при необходимости пишет почасовой снимок.
 
 #### `POST /api/client/inventory`
-Срез сети AE2.
+Срез сети AE2 — предметы и жидкости в одном списке, различаются полем `kind`.
 ```json
 {
   "items": [
-    {"name": "minecraft:iron_ingot", "label": "Iron Ingot", "count": 2048}
+    {"kind": "item", "name": "minecraft:iron_ingot", "label": "Iron Ingot", "count": 2048},
+    {"kind": "fluid", "name": "minecraft:lava", "label": "Lava", "count": 16000}
   ],
   "craftables": [
-    {"name": "minecraft:iron_ingot", "label": "Iron Ingot"}
+    {"kind": "item", "name": "minecraft:iron_ingot", "label": "Iron Ingot"},
+    {"kind": "fluid", "name": "minecraft:lava", "label": "Lava"}
   ]
 }
 ```
-Ответ: `{"ok": true}`. `items` — что есть в сети; `craftables` — что доступно для автокрафта.
+Ответ: `{"ok": true}`. `items` — что есть в сети (для `kind: "fluid"` поле `count` — объём в мБ); `craftables` — что доступно для автокрафта/экспорта.
 
 #### `GET /api/client/orders/pending`
 Заказы, ожидающие выполнения (статус `queued`).
 ```json
 {
   "orders": [
-    {"id": 42, "item": "minecraft:iron_ingot", "label": "Iron Ingot", "amount": 64}
+    {"id": 42, "kind": "item", "item": "minecraft:iron_ingot", "label": "Iron Ingot", "amount": 64},
+    {"id": 43, "kind": "fluid", "item": "minecraft:lava", "label": "Lava", "amount": 8000}
   ]
 }
 ```
+Для `kind: "fluid"` поле `amount` — объём в мБ.
 
 #### `POST /api/client/orders/{id}/result`
 Отчёт о ходе/итоге выполнения заказа.
@@ -108,7 +112,7 @@ ae2_flux-networks_dashboard/   ← контейнер (не git)
 - `POST /api/ui/login` — `{"password": "..."}` → ставит сессионную куку.
 - `GET  /api/ui/stats` — текущие значения Flux + история (почасово, до 7 дней) для графиков.
 - `GET  /api/ui/items` — последний срез inventory + craftables, плюс `last_seen` / флаг «client offline».
-- `POST /api/ui/orders` — `{"item": "...", "label": "...", "amount": N}` → создаёт заказ в статусе `queued`.
+- `POST /api/ui/orders` — `{"kind": "item|fluid", "item": "...", "label": "...", "amount": N}` → создаёт заказ в статусе `queued` (для `fluid` — `amount` в мБ).
 - `GET  /api/ui/orders` — список заказов со статусами.
 
 UI-эндпоинты требуют валидную сессионную куку (кроме `login`).
@@ -149,8 +153,8 @@ dashboard/
 ### Таблицы SQLite
 
 - `flux_samples(id, ts, energy_in, energy_out, buffer, capacity)` — почасовые снимки. Снимок пишется, если для текущего часового бакета его ещё нет. Очистка строк старше 7 дней.
-- `inventory(id=1, ts, items_json, craftables_json)` — единственная строка с последним срезом; `ts` = `last_seen`.
-- `orders(id, item, label, amount, status, message, created_at, updated_at)`.
+- `inventory(id=1, ts, items_json, craftables_json)` — единственная строка с последним срезом (items_json/craftables_json содержат записи и item, и fluid, различаемые `kind`); `ts` = `last_seen`.
+- `orders(id, kind, item, label, amount, status, message, created_at, updated_at)` — `kind` = `item`/`fluid`, `amount` для жидкостей в мБ.
 
 ### Почасовой снимок
 
@@ -160,7 +164,7 @@ Client шлёт Flux раз в минуту → сервер всегда дер
 
 Vanilla JS + Chart.js (CDN), без сборки. Две панели:
 - **Статистика:** текущая мощность in/out, буфер/ёмкость, линейные графики энергии за неделю.
-- **Заказы:** поиск по `craftables`, ввод количества, кнопка «Заказать», список заказов со статусами, индикатор «client offline».
+- **Заказы:** поиск по `craftables` (предметы и жидкости вперемешку, с иконкой/меткой типа), ввод количества (шт. или мБ в зависимости от `kind`), кнопка «Заказать», список заказов со статусами, индикатор «client offline».
 
 Браузер опрашивает `/api/ui/stats` и `/api/ui/items` каждые ~5 секунд.
 
@@ -170,7 +174,7 @@ Vanilla JS + Chart.js (CDN), без сборки. Две панели:
 client/
 ├── main.lua        # конфиг + главный цикл (pcall на каждой итерации)
 ├── config.lua      # DASHBOARD_URL, API_TOKEN, POLL_INTERVAL=60
-├── ae2.lua         # обёртка me_controller: getItemsInNetwork, getCraftables, request(n)
+├── ae2.lua         # обёртка me_controller: getItemsInNetwork/getFluidsInNetwork, getCraftables, request(n)
 ├── flux.lua        # обёртка компонента Flux Networks: чтение энергостатистики
 ├── http.lua        # internet-карта: JSON + заголовок авторизации + обработка ошибок
 ├── json.lua        # библиотека JSON (вендоринг)
@@ -181,7 +185,7 @@ client/
 
 Главный цикл (раз в 60с), вся итерация в `pcall`:
 1. прочитать Flux → `POST /api/client/flux`;
-2. прочитать AE2 (items + craftables) → `POST /api/client/inventory`;
+2. прочитать AE2 (items + fluids + craftables, обоих видов) → `POST /api/client/inventory`;
 3. `GET /api/client/orders/pending`; для каждого: найти craftable, вызвать `request(amount)`, отчитаться `requested`; при ошибке — `failed`;
 4. (по возможности) проверить статус ранее запущенных джоб и отчитаться `done`/`failed`.
 
@@ -198,7 +202,7 @@ client/
 ## Открытые вопросы / проверить в игре
 
 - Точные имена методов компонента **Flux Networks** в OpenComputers зависят от версии модпака — сверить в игре. Изоляция в `flux.lua`.
-- Точные имена методов AE2-компонента (`me_controller` vs `me_interface`) и сигнатура `craftable.request` — сверить под версию AE2/OC модпака. Изоляция в `ae2.lua`.
+- Точные имена методов AE2-компонента (`me_controller` vs `me_interface`), сигнатура `craftable.request` и методы для жидкостей (`getFluidInNetwork`/аналог) — сверить под версию AE2/OC модпака. Изоляция в `ae2.lua`.
 
 ## Вне области (YAGNI)
 
