@@ -1,5 +1,42 @@
 <!DOCTYPE html>
-<html>
-<head><title>AE2 + Flux Dashboard</title></head>
-<body>Loading...</body>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>AE2 + Flux Dashboard</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+  <div id="login-view">
+    <h1>Вход</h1>
+    <form id="login-form">
+      <input type="password" id="password" placeholder="Пароль" required />
+      <button type="submit">Войти</button>
+    </form>
+    <p id="login-error" class="error"></p>
+  </div>
+
+  <div id="dashboard-view" hidden>
+    <header>
+      <h1>AE2 + Flux Networks Dashboard</h1>
+      <span id="offline-badge" class="badge" hidden>client offline</span>
+    </header>
+
+    <section id="stats-panel">
+      <h2>Энергия (Flux Networks)</h2>
+      <div id="stats-current"></div>
+      <canvas id="stats-chart" height="100"></canvas>
+    </section>
+
+    <section id="orders-panel">
+      <h2>Заказы</h2>
+      <input type="text" id="item-search" placeholder="Поиск предмета/жидкости..." />
+      <ul id="craftables-list"></ul>
+      <h3>Очередь заказов</h3>
+      <ul id="orders-list"></ul>
+    </section>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
 </html>
